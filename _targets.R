@@ -1,12 +1,4 @@
-library(targets)
-library(terra)
-library(sf)
-library(stringr)
-library(dplyr)
-library(ggplot2)
-library(lubridate)
-
-source("config/Config_CM.R")
+source("config.R")
 source("functions/_functions_unified.R")
 
 tar_option_set(packages = c("terra","sf","dplyr","ggplot2","tidyr","stringr"), format = "rds")

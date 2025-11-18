@@ -3,14 +3,14 @@
 # ----------------------
 #
 #
-data_dir <- "D:/NARCLIM2.0_Data/Fire_Index/WA/all_data"
+data_dir <- "/hdd/287658c/NARCLIM2.0_Data/Fire_Index/WA/all_data"
 #data_dir <- "D:/NARCLIM2.0_Data/Fire_Index/WA/testing"
 #gpkg_path<- "D:/NARCLIM2.0_Data/Shape_Files/ASGS_2021_MAIN_STRUCTURE_GPKG_GDA2020/ASGS_2021_Main_Structure_GDA2020.gpkg"
-gpkg_path<-"C:\\Users\\300888D\\Nextcloud\\Environment_General\\ABS_data\\ABS_Census_2016\\abs_gcc_2016_data_provided\\GCCSA_2016_AUST.shp"
+gpkg_path<-"/media/287658c/Backup-23-41/HDD_archive/cloud-car-dat/Shared/Environment_General/ABS_data/ABS_Census_2016/abs_gcc_2016_data_provided/GCCSA_2016_AUST.shp"
 
 variables <- c("FFDI")
 scenarios <- c("historical","ssp370")
-models <- c("EC-Earth3-Veg")
+models <- c("UKESM1-0-LL")
 
 hist_start_year <- 1990
 hist_end_year <- 2005
