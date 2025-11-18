@@ -44,5 +44,5 @@ test_mode <- TRUE
 #crop_extent <- terra::ext(112,120,-35,-25)
 sample_layers <- 12 
 extent <- c(112,129,-35.2,-13.8)
-output_dir <- "outputs_test"
+output_dir <- "figures_and_tables"
 if (!dir.exists(output_dir)) dir.create(output_dir, recursive=TRUE)

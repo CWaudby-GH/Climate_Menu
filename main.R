@@ -9,5 +9,5 @@ tar_visnetwork(targets_only = T)
 tar_make()
 
 #### exploratory data analysis ####
-tar_load(out)
-str(out)
+tar_load(nc_files)
+str(nc_files)
