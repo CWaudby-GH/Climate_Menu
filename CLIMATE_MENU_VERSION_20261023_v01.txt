@@ -1,0 +1,58 @@
+﻿CLIMATE MENU VERSION RECORD
+===========================
+
+Version:
+20261023_v01
+
+Date:
+2026-10-23
+
+Status:
+RECOVERED BACKEND PASS
+
+Validated pipeline:
+40 targets completed
+0 skipped
+0 target errors
+0 target warnings
+
+Validated configuration:
+Variable: FFDI
+Historical: 1990
+Projection: 2020
+Scenario: SSP3-7.0
+Model mode: ensemble_R3
+GCM: EC-Earth3-Veg
+RCM: WRF412R3
+
+Targets script:
+Climate_Menu_targets_20261023_v01.R
+
+Configuration:
+config/Config_CM_20261023_v01.R
+
+Functions:
+functions/_functions_20261023_v01.R
+
+Source lineage:
+November 2025 original Climate Menu
+-> August 2026 recovery
+-> temporal PASS
+-> threshold PASS
+-> FULL26 PASS
+-> scientific gate PASS
+-> ensemble PASS
+-> ensemble engine PASS
+-> NARCliM streaming/geography additions
+-> 2026-10-23 clean 40-target recovery PASS
+
+Development rule:
+Scientific and data-processing functionality remains within
+the targets framework.
+
+Shiny is to operate as a configuration/user-interface layer
+over the targets backend and must not duplicate scientific
+processing logic.
+
+Do not overwrite this validated version.
+Future development should use a new dated/versioned source set.
