@@ -1,0 +1,27 @@
+﻿CLIMATE MENU CHECKPOINT
+
+Checkpoint:
+20261026_v06-shiny-results-pass
+
+Frozen source:
+V06_SHINY_RESULTS_PASS_20261026_180121
+
+Protected functionality:
+- v06 targets backend
+- runtime request adapter
+- remote NARCliM production acquisition
+- historical/future/change mean raster production
+- Shiny Run analysis workflow
+- session-isolated targets execution
+- Summary/Historical/Future/Change result tabs
+- PNG downloads
+- GeoTIFF downloads
+
+This checkpoint PRECEDES:
+- controlled GCCSA/LGA selectors
+- geography-aware result maps
+- dynamic analysis descriptions
+- wider Results presentation
+
+The six source files in this commit were SHA256-verified
+against the frozen local checkpoint before commit.

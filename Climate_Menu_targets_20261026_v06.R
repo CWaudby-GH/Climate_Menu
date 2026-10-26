@@ -12,6 +12,120 @@ source("functions/_functions_20261026_v06.R")
 
 tar_option_set(packages = c("terra","sf","dplyr","ggplot2","tidyr","stringr"), format = "rds")
 
+###########################################################################
+# SHINY / RUNTIME REQUEST ADAPTER
+#
+# Static configuration remains the default and regression fallback.
+# When CLIMATE_MENU_REQUEST_FILE points to an RDS request, only request
+# parameters are overridden. Scientific targets and target names remain
+# unchanged.
+###########################################################################
+
+climate_menu_runtime_request_file <- Sys.getenv(
+  "CLIMATE_MENU_REQUEST_FILE",
+  unset = ""
+)
+
+climate_menu_runtime_request <- NULL
+
+if (nzchar(climate_menu_runtime_request_file)) {
+
+  if (!file.exists(climate_menu_runtime_request_file)) {
+    stop(
+      "CLIMATE_MENU_REQUEST_FILE does not exist: ",
+      climate_menu_runtime_request_file
+    )
+  }
+
+  climate_menu_runtime_request <- readRDS(
+    climate_menu_runtime_request_file
+  )
+
+  stopifnot(is.list(climate_menu_runtime_request))
+
+  # Acquisition / climate product
+  data_source <- "narclim_remote"
+  enable_remote_targets <- TRUE
+  narclim_domain <- climate_menu_runtime_request$domain
+  narclim_product <- climate_menu_runtime_request$product
+  variables <- climate_menu_runtime_request$variable
+
+  # Comparison periods / scenarios
+  comparison_mode <- climate_menu_runtime_request$comparison
+
+  if (!is.null(climate_menu_runtime_request$historical$start_year)) {
+    hist_start_year <- climate_menu_runtime_request$historical$start_year
+    hist_end_year <- climate_menu_runtime_request$historical$end_year
+  }
+
+  if (!is.null(climate_menu_runtime_request$future$start_year)) {
+    proj_start_year <- climate_menu_runtime_request$future$start_year
+    proj_end_year <- climate_menu_runtime_request$future$end_year
+  }
+
+  future_scenario <- climate_menu_runtime_request$future$scenario
+
+  if (length(future_scenario) > 1L) {
+    stop(
+      paste(
+        "This targets session accepts one future SSP at a time.",
+        "Multi-SSP requests must be orchestrated as separate sessions."
+      )
+    )
+  }
+
+  if (!is.null(future_scenario)) {
+    scenarios <- c("historical", future_scenario)
+  } else {
+    scenarios <- "historical"
+  }
+
+  # Model selection
+  model_mode <- climate_menu_runtime_request$model_mode
+
+  if (identical(model_mode, "individual")) {
+    gcms <- climate_menu_runtime_request$gcm
+    rcms <- climate_menu_runtime_request$rcm
+  }
+
+  # Analysis parameters
+  if (!is.null(climate_menu_runtime_request$analysis_parameters$threshold)) {
+    threshold_value <- climate_menu_runtime_request$analysis_parameters$threshold
+  }
+
+  if (!is.null(climate_menu_runtime_request$analysis_parameters$percentile)) {
+    Percentile <- 100 * climate_menu_runtime_request$analysis_parameters$percentile
+  }
+
+  if (!is.null(climate_menu_runtime_request$analysis_parameters$min_duration)) {
+    min_event_duration <- climate_menu_runtime_request$analysis_parameters$min_duration
+  }
+
+  # ROI
+  roi_mode <- climate_menu_runtime_request$roi$mode
+  geography_type <- climate_menu_runtime_request$roi$geography_type
+  geography_names <- climate_menu_runtime_request$roi$geography_names
+  combine_geographies <- climate_menu_runtime_request$roi$combine_geographies
+  roi_bbox <- climate_menu_runtime_request$roi$bbox
+
+  # Stable runtime identifier for audit/output separation.
+  runtime_session_id <- Sys.getenv(
+    "CLIMATE_MENU_SESSION_ID",
+    unset = format(Sys.time(), "%Y%m%d_%H%M%S")
+  )
+
+  runtime_output_dir <- Sys.getenv(
+    "CLIMATE_MENU_OUTPUT_DIR",
+    unset = ""
+  )
+
+  if (nzchar(runtime_output_dir)) {
+    output_dir <- runtime_output_dir
+    dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+}
+
+
 list(
 
         ###########################################################################
@@ -1428,6 +1542,5 @@ list(
                 }
         )
 )
-
 
 

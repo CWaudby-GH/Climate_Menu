@@ -817,23 +817,19 @@ ui <- fluidPage(
           "Results"
         ),
 
-        div(
-          class = "cm-status-info",
+        uiOutput("run_status"),
 
-          strong(
-            "Backend connection is the next step."
-          ),
+        actionButton(
+          "run_analysis",
+          "Run analysis",
+          class = "btn-success",
+          width = "100%"
+        ),
 
-          br(),
+        br(),
+        br(),
 
-          span(
-            paste(
-              "This interface currently validates and constructs",
-              "the Climate Menu request without running the",
-              "NARCliM analysis."
-            )
-          )
-        )
+        uiOutput("results_panel")
       )
     )
   )
@@ -1629,6 +1625,350 @@ server <- function(input, output, session) {
       max.level = 4
     )
   })
+
+  ###########################################################################
+  # CLIMATE MENU ANALYSIS EXECUTION AND RESULTS
+  ###########################################################################
+
+  run_state <- reactiveValues(
+    status = "Build the analysis request, then run the analysis.",
+    result = NULL,
+    error = NULL
+  )
+
+  observeEvent(input$run_analysis, {
+
+    request <- final_request()
+    req(request)
+
+    if (length(request$future$scenario) > 1L) {
+      run_state$error <- paste(
+        "Compare all SSPs requires separate scenario runs.",
+        "For this first validated interface run, select one SSP."
+      )
+      run_state$status <- "Analysis not started."
+      run_state$result <- NULL
+      return()
+    }
+
+    session_id <- paste0(
+      "cm_",
+      format(Sys.time(), "%Y%m%d_%H%M%S"),
+      "_",
+      sprintf("%06d", sample.int(999999L, 1L))
+    )
+
+    session_root <- file.path(tempdir(), session_id)
+    output_root <- file.path(session_root, "outputs")
+    store <- file.path(session_root, "_targets")
+    request_file <- file.path(session_root, "request.rds")
+    result_file <- file.path(session_root, "result.rds")
+    log_file <- file.path(session_root, "targets.log")
+
+    dir.create(output_root, recursive = TRUE, showWarnings = FALSE)
+    dir.create(store, recursive = TRUE, showWarnings = FALSE)
+
+    saveRDS(request, request_file)
+
+    run_state$status <- "Running Climate Menu analysis..."
+    run_state$error <- NULL
+    run_state$result <- NULL
+
+    withProgress(
+      message = "Climate Menu analysis",
+      value = 0,
+      {
+
+        incProgress(0.10, detail = "Preparing session")
+
+        rscript <- file.path(
+          R.home("bin"),
+          if (.Platform$OS.type == "windows") "Rscript.exe" else "Rscript"
+        )
+
+        session_spec_file <- file.path(
+          session_root,
+          "session_spec.rds"
+        )
+
+        session_spec <- list(
+          project_root = normalizePath(
+            getwd(),
+            winslash = "/",
+            mustWork = TRUE
+          ),
+          request_file = normalizePath(
+            request_file,
+            winslash = "/",
+            mustWork = TRUE
+          ),
+          store = normalizePath(
+            store,
+            winslash = "/",
+            mustWork = TRUE
+          ),
+          result_file = normalizePath(
+            result_file,
+            winslash = "/",
+            mustWork = FALSE
+          ),
+          output_dir = normalizePath(
+            output_root,
+            winslash = "/",
+            mustWork = TRUE
+          ),
+          session_id = session_id
+        )
+
+        saveRDS(
+          session_spec,
+          session_spec_file
+        )
+
+        incProgress(0.15, detail = "Running climate analysis")
+
+        status <- system2(
+          command = rscript,
+          args = c(
+            "--vanilla",
+            shQuote("runtime/run_climate_menu_session_v06.R"),
+            shQuote(
+              normalizePath(
+                session_spec_file,
+                winslash = "/",
+                mustWork = TRUE
+              )
+            )
+          ),
+          stdout = log_file,
+          stderr = log_file
+        )
+
+        incProgress(0.65, detail = "Preparing results")
+
+        if (!identical(status, 0L) || !file.exists(result_file)) {
+
+          log_text <- if (file.exists(log_file)) {
+            paste(
+              tail(readLines(log_file, warn = FALSE), 30L),
+              collapse = "\n"
+            )
+          } else {
+            "No backend log was produced."
+          }
+
+          run_state$error <- paste(
+            "Climate Menu analysis did not complete.",
+            log_text,
+            sep = "\n\n"
+          )
+
+          run_state$status <- "Analysis failed."
+          return()
+        }
+
+        result <- readRDS(result_file)
+        result$session_root <- session_root
+
+        run_state$result <- result
+        run_state$error <- NULL
+        run_state$status <- "Analysis complete."
+
+        incProgress(0.10, detail = "Complete")
+      }
+    )
+  })
+
+
+  output$run_status <- renderUI({
+
+    if (!is.null(run_state$error)) {
+      return(
+        div(
+          class = "alert alert-danger",
+          strong("Analysis failed"),
+          tags$pre(
+            style = "white-space: pre-wrap;",
+            run_state$error
+          )
+        )
+      )
+    }
+
+    div(
+      class = "cm-help",
+      run_state$status
+    )
+  })
+
+
+  output$results_panel <- renderUI({
+
+    result <- run_state$result
+
+    if (is.null(result)) {
+      return(NULL)
+    }
+
+    tabsetPanel(
+      id = "result_tabs",
+
+      tabPanel(
+        "Summary",
+        br(),
+        uiOutput("result_summary"),
+        br(),
+        downloadButton(
+          "download_request",
+          "Download analysis request"
+        )
+      ),
+
+      tabPanel(
+        "Historical",
+        br(),
+        imageOutput("historical_result", width = "100%"),
+        downloadButton("download_historical_png", "Download PNG"),
+        downloadButton("download_historical_tif", "Download GeoTIFF")
+      ),
+
+      tabPanel(
+        "Future",
+        br(),
+        imageOutput("future_result", width = "100%"),
+        downloadButton("download_future_png", "Download PNG"),
+        downloadButton("download_future_tif", "Download GeoTIFF")
+      ),
+
+      tabPanel(
+        "Change",
+        br(),
+        imageOutput("change_result", width = "100%"),
+        downloadButton("download_change_png", "Download PNG"),
+        downloadButton("download_change_tif", "Download GeoTIFF")
+      )
+    )
+  })
+
+
+  output$result_summary <- renderUI({
+
+    req(run_state$result)
+
+    x <- run_state$result$request
+
+    area_text <- if (length(x$roi$geography_names)) {
+      paste(x$roi$geography_names, collapse = "; ")
+    } else if (!is.null(x$roi$bbox)) {
+      paste(x$roi$bbox, collapse = ", ")
+    } else {
+      x$roi$mode
+    }
+
+    div(
+      p(strong("Analysis: "), x$metric_name),
+      p(strong("Study area: "), area_text),
+      p(strong("Climate variable: "), x$variable),
+      p(strong("NARCliM product: "), paste(x$domain, x$product, sep = " / ")),
+      p(strong("Comparison: "), x$comparison),
+      p(strong("Model selection: "), x$model_mode)
+    )
+  })
+
+
+  result_image <- function(which) {
+
+    renderImage({
+
+      req(run_state$result)
+
+      path <- run_state$result$plots[[which]]
+
+      validate(
+        need(
+          !is.null(path) && file.exists(path),
+          paste("No", which, "graphic was produced.")
+        )
+      )
+
+      list(
+        src = path,
+        contentType = "image/png",
+        alt = paste("Climate Menu", which, "result"),
+        width = "100%"
+      )
+
+    }, deleteFile = FALSE)
+  }
+
+  output$historical_result <- result_image("historical")
+  output$future_result <- result_image("future")
+  output$change_result <- result_image("change")
+
+
+  result_download <- function(which, type = c("png", "tif")) {
+
+    type <- match.arg(type)
+
+    downloadHandler(
+
+      filename = function() {
+        paste0(
+          "Climate_Menu_",
+          which,
+          "_",
+          format(Sys.Date(), "%Y%m%d"),
+          if (type == "png") ".png" else ".tif"
+        )
+      },
+
+      content = function(file) {
+
+        req(run_state$result)
+
+        src <- if (type == "png") {
+          run_state$result$plots[[which]]
+        } else {
+          run_state$result$rasters[[which]]
+        }
+
+        validate(
+          need(
+            !is.null(src) && file.exists(src),
+            paste("No", which, type, "product is available.")
+          )
+        )
+
+        file.copy(src, file, overwrite = TRUE)
+      }
+    )
+  }
+
+  output$download_historical_png <- result_download("historical", "png")
+  output$download_future_png <- result_download("future", "png")
+  output$download_change_png <- result_download("change", "png")
+
+  output$download_historical_tif <- result_download("historical", "tif")
+  output$download_future_tif <- result_download("future", "tif")
+  output$download_change_tif <- result_download("change", "tif")
+
+
+  output$download_request <- downloadHandler(
+
+    filename = function() {
+      paste0(
+        "Climate_Menu_analysis_request_",
+        format(Sys.Date(), "%Y%m%d"),
+        ".rds"
+      )
+    },
+
+    content = function(file) {
+      req(run_state$result)
+      saveRDS(run_state$result$request, file)
+    }
+  )
+
 }
 
 
