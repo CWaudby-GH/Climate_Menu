@@ -1,0 +1,48 @@
+CLIMATE MENU 20261026_v03
+==============================
+
+Checkpoint purpose:
+Substantial Climate Menu release-development baseline following
+successful live validation of remote NARCliM data acquisition and
+daily raster conversion.
+
+Inherited validation:
+- Existing Climate Menu backend: 40/40 target clean smoke PASS.
+- Portable GCCSA boundary path PASS.
+- NARCliM catalogue discovery PASS.
+- NARCliM metadata inspection PASS.
+- Greater Perth geography -> native index PASS.
+- Direct established NARCliM streaming PASS.
+- Climate Menu daily raster adapter PASS.
+- Actual CF-derived dates PASS.
+- Native NARCliM grid retained with CRS deliberately unset.
+- Raster value/orientation comparison PASS.
+- Authoritative lon2d/lat2d geographic linkage PASS.
+
+Live validation dataset:
+- Product: bias-adjusted NARCliM2.0
+- Domain: AUS-18
+- Variable: tasmaxAdjust
+- Scenario: SSP2-4.5
+- GCM: EC-Earth3-Veg
+- RCM: NARCliM2-0-WRF412R3
+- Geography: Greater Perth
+- Year: 2020
+- Live validation period: 2020-01-01 to 2020-01-03
+- Streamed dimensions: 8 x 11 x 3
+
+Scientific rule:
+The NARCliM rlon/rlat raster is retained in native-grid coordinate
+space with CRS unset. Geographic operations must use the authoritative
+NARCliM lon2d/lat2d/native-cell pathway.
+
+Established stream_narclim_subset() was not redesigned for this bridge.
+
+Next development stage:
+Wire validated remote NARCliM acquisition into the existing targets
+backend without changing validated downstream scientific processing.
+
+Release objective:
+Professional substantial Climate Menu Shiny application with broad
+validated functionality, README/launcher, fresh-extraction QA, and
+downloadable GitHub ZIP.
