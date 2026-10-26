@@ -6417,3 +6417,234 @@ print.climate_menu_roi <- function(
 
   invisible(x)
 }
+
+###############################################################################
+# Climate Menu remote daily-period acquisition
+# Added 2026-10-26 v06 production integration
+###############################################################################
+
+stream_narclim_period_daily_file <- function(
+    opendap_url,
+    variable,
+    indices,
+    remote_info,
+    start_year,
+    end_year,
+    output_file,
+    chunk_days = 31L
+) {
+
+    required <- c(
+        'time_values',
+        'time_units',
+        'calendar'
+    )
+
+    missing_fields <- setdiff(
+        required,
+        names(remote_info)
+    )
+
+    if (length(missing_fields) > 0L) {
+        stop(
+            'Remote resource is missing required CF time metadata: ',
+            paste(missing_fields, collapse = ', ')
+        )
+    }
+
+    calendar <- tolower(
+        as.character(remote_info$calendar[[1]])
+    )
+
+    if (!calendar %in% c(
+        'standard',
+        'gregorian',
+        'proleptic_gregorian'
+    )) {
+        stop(
+            'Remote calendar is not currently supported by this ',
+            'production helper: ',
+            remote_info$calendar[[1]],
+            '. Refusing to infer dates.'
+        )
+    }
+
+    units <- as.character(
+        remote_info$time_units[[1]]
+    )
+
+    origin_match <- regexec(
+        '^days since[[:space:]]+([0-9]{4}-[0-9]{2}-[0-9]{2})',
+        units,
+        ignore.case = TRUE
+    )
+
+    origin_parts <- regmatches(
+        units,
+        origin_match
+    )[[1]]
+
+    if (length(origin_parts) < 2L) {
+        stop(
+            'Unsupported CF time units: ',
+            units,
+            '. Expected days since YYYY-MM-DD.'
+        )
+    }
+
+    origin <- as.Date(origin_parts[[2]])
+
+    time_values <- as.numeric(
+        remote_info$time_values
+    )
+
+    # NARCliM daily timestamps are centred on the day (e.g. .5).
+    # floor() maps those timestamps to the corresponding calendar day.
+    dates <- origin + floor(time_values)
+
+    if (length(dates) != as.integer(remote_info$n_time)) {
+        stop(
+            'CF date count does not match remote n_time.'
+        )
+    }
+
+    years <- as.integer(
+        format(dates, '%Y')
+    )
+
+    wanted <- which(
+        years >= as.integer(start_year) &
+        years <= as.integer(end_year)
+    )
+
+    if (length(wanted) == 0L) {
+        stop(
+            'No remote daily timesteps found for requested period ',
+            start_year, '-', end_year, '.'
+        )
+    }
+
+    if (
+        length(wanted) > 1L &&
+        any(diff(wanted) != 1L)
+    ) {
+        stop(
+            'Requested remote time indices are not contiguous.'
+        )
+    }
+
+    chunk_days <- as.integer(chunk_days)
+
+    if (
+        !is.finite(chunk_days) ||
+        chunk_days < 1L
+    ) {
+        stop(
+            'chunk_days must be a positive integer.'
+        )
+    }
+
+    starts <- seq.int(
+        from = wanted[[1]],
+        to = wanted[[length(wanted)]],
+        by = chunk_days
+    )
+
+    chunks <- vector(
+        'list',
+        length(starts)
+    )
+
+    for (i in seq_along(starts)) {
+
+        first <- starts[[i]]
+
+        remaining <-
+            wanted[[length(wanted)]] - first + 1L
+
+        count <- min(
+            chunk_days,
+            remaining
+        )
+
+        message(
+            'Streaming ',
+            variable,
+            ': ',
+            as.character(dates[[first]]),
+            ' to ',
+            as.character(dates[[first + count - 1L]]),
+            ' (', count, ' daily layers)'
+        )
+
+        chunks[[i]] <- stream_narclim_daily_raster(
+            opendap_url = opendap_url,
+            variable = variable,
+            indices = indices,
+            t_start = first,
+            t_count = count
+        )
+    }
+
+    r <- do.call(c, chunks)
+
+    if (
+        is.null(r) ||
+        terra::nlyr(r) != length(wanted)
+    ) {
+        stop(
+            'Remote period stream returned an unexpected layer count.'
+        )
+    }
+
+    selected_dates <- dates[wanted]
+
+    names(r) <- paste0(
+        'day_',
+        format(selected_dates, '%Y_%m_%d')
+    )
+
+    # Preserve actual calendar dates as SpatRaster time metadata as well
+    # as layer names, so downstream calendar-aware processing has both.
+    terra::time(r) <- selected_dates
+
+    # Convert temperature only when the source metadata says Kelvin.
+    # This avoids relying solely on a numerical magnitude heuristic.
+    source_units <-
+        if ('variable_units' %in% names(remote_info)) {
+            as.character(remote_info$variable_units[[1]])
+        } else {
+            NA_character_
+        }
+
+    if (
+        grepl('^tas', variable, ignore.case = TRUE) &&
+        !is.na(source_units) &&
+        tolower(trimws(source_units)) %in% c(
+            'k',
+            'kelvin'
+        )
+    ) {
+        r <- r - 273.15
+    }
+
+    dir.create(
+        dirname(output_file),
+        recursive = TRUE,
+        showWarnings = FALSE
+    )
+
+    safe_write_raster(
+        r,
+        output_file
+    )
+
+    if (!file.exists(output_file)) {
+        stop(
+            'Remote raster output was not created.'
+        )
+    }
+
+    output_file
+}
+

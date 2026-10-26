@@ -1,0 +1,30 @@
+﻿CLIMATE MENU V06 VALIDATED BACKEND CHECKPOINT
+
+Created:
+2026-10-26 16:15:23
+
+Status:
+REMOTE PRODUCTION BACKEND VALIDATED
+
+Validated production path:
+- remote NARCliM acquisition
+- calendar-preserving daily rasters
+- metadata-based temperature conversion
+- metric resolution
+- scientific compatibility gate
+- historical mean product
+- future mean product
+- historical-future change product
+- historical graphic
+- future graphic
+- change graphic
+
+Final acceptance:
+R exit code 0
+
+This checkpoint contains source/configuration/UI files only.
+Large NARCliM inputs, target stores and production-test raster outputs
+are intentionally excluded.
+
+Next development stage:
+Shiny -> runtime request -> isolated targets session -> results display.

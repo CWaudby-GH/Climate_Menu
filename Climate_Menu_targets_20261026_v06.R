@@ -178,6 +178,175 @@ list(
                 }
         ),
 
+
+    # =====================================================================
+    # V06 REMOTE-THROUGH-TARGETS PROOF BRANCH
+    #
+    # Engineering regression only.
+    # Streams only three daily timesteps when acquisition mode is remote.
+    # Existing local Climate Menu branch remains unchanged.
+    # =====================================================================
+
+    tar_target(
+        narclim_remote_hist_info,
+        {
+            if (!identical(climate_menu_acquisition_mode, "narclim_remote")) {
+                NULL
+            } else {
+                stopifnot(nrow(narclim_remote_hist_resources) >= 1L)
+                inspect_narclim_resource(
+                    opendap_url = narclim_remote_hist_resources$opendap_url[[1]],
+                    variable = climate_menu_request$variables[[1]]
+                )
+            }
+        }
+    ),
+
+    tar_target(
+        narclim_remote_proj_info,
+        {
+            if (!identical(climate_menu_acquisition_mode, "narclim_remote")) {
+                NULL
+            } else {
+                stopifnot(nrow(narclim_remote_proj_resources) >= 1L)
+                inspect_narclim_resource(
+                    opendap_url = narclim_remote_proj_resources$opendap_url[[1]],
+                    variable = climate_menu_request$variables[[1]]
+                )
+            }
+        }
+    ),
+
+    tar_target(
+        narclim_remote_indices,
+        {
+            if (!identical(climate_menu_acquisition_mode, "narclim_remote")) {
+                NULL
+            } else {
+                geography_to_narclim_indices(
+                    geography_sf = climate_menu_roi$geometry,
+                    lon2d = narclim_remote_hist_info$lon2d,
+                    lat2d = narclim_remote_hist_info$lat2d,
+                    padding_cells = 1L
+                )
+            }
+        }
+    ),
+
+    tar_target(
+        narclim_remote_hist_smoke_raster,
+        {
+            if (!identical(climate_menu_acquisition_mode, "narclim_remote")) {
+                NULL
+            } else {
+                terra::wrap(
+                    stream_narclim_daily_raster(
+                        opendap_url = narclim_remote_hist_resources$opendap_url[[1]],
+                        variable = climate_menu_request$variables[[1]],
+                        indices = narclim_remote_indices,
+                        t_start = 1L,
+                        t_count = 3L
+                    )
+                )
+            }
+        }
+    ),
+
+    tar_target(
+        narclim_remote_proj_smoke_raster,
+        {
+            if (!identical(climate_menu_acquisition_mode, "narclim_remote")) {
+                NULL
+            } else {
+                terra::wrap(
+                    stream_narclim_daily_raster(
+                        opendap_url = narclim_remote_proj_resources$opendap_url[[1]],
+                        variable = climate_menu_request$variables[[1]],
+                        indices = narclim_remote_indices,
+                        t_start = 1L,
+                        t_count = 3L
+                    )
+                )
+            }
+        }
+    ),
+
+    tar_target(
+        narclim_remote_smoke_result,
+        {
+            if (!identical(climate_menu_acquisition_mode, "narclim_remote")) {
+                list(
+                    status = "SKIPPED",
+                    reason = "Acquisition mode is not narclim_remote."
+                )
+            } else {
+
+                hist_r <- terra::unwrap(narclim_remote_hist_smoke_raster)
+                proj_r <- terra::unwrap(narclim_remote_proj_smoke_raster)
+
+                hist_range <- terra::minmax(hist_r)
+                proj_range <- terra::minmax(proj_r)
+
+                # Defensive unit conversion:
+                # validated BA bridge returned temperature in Kelvin.
+                # Only convert when magnitude clearly indicates Kelvin.
+                if (max(hist_range, na.rm = TRUE) > 150) {
+                    hist_r <- hist_r - 273.15
+                }
+
+                if (max(proj_range, na.rm = TRUE) > 150) {
+                    proj_r <- proj_r - 273.15
+                }
+
+                hist_hot <- compute_threshold_days(
+                    hist_r,
+                    threshold = 35,
+                    inclusive = TRUE
+                )
+
+                proj_hot <- compute_threshold_days(
+                    proj_r,
+                    threshold = 35,
+                    inclusive = TRUE
+                )
+
+                hist_mean <- mean(
+                    terra::values(hist_hot),
+                    na.rm = TRUE
+                )
+
+                proj_mean <- mean(
+                    terra::values(proj_hot),
+                    na.rm = TRUE
+                )
+
+                if (!is.finite(hist_mean) || !is.finite(proj_mean)) {
+                    stop("Remote proof produced non-finite metric means.")
+                }
+
+                list(
+                    status = "PASS",
+                    test_only = TRUE,
+                    scientific_interpretation = FALSE,
+                    test_type = "bounded_remote_targets_integration",
+                    variable = climate_menu_request$variables[[1]],
+                    historical_scenario = climate_menu_request$scenarios[[1]],
+                    projection_scenario = climate_menu_request$scenarios[[2]],
+                    threshold_c = 35,
+                    streamed_timesteps = 3L,
+                    indices = narclim_remote_indices,
+                    historical_hot_day_mean = hist_mean,
+                    projection_hot_day_mean = proj_mean,
+                    interpretation = paste(
+                        "Engineering proof only.",
+                        "Three-day values must not be interpreted",
+                        "as a climate comparison."
+                    )
+                )
+            }
+        }
+    ),
+
         tar_target(nc_files, filter_nc_files(data_dir=data_dir, variables=variables, scenarios=scenarios, models=NULL)),
         #====
         # NARCliM member discovery and user selection
@@ -370,30 +539,54 @@ list(
         
         tar_target(
                 hist_metric_resolution,
-                resolve_metric_source(
-                        requested_metric = variables[1],
-                        available_variables =
-                                extract_available_variable_names(
-                                        nc_hist_files
-                                ),
-                        direct_metric_variables = variables[1],
-                        derivation_requirements =
-                                metric_derivation_requirements
-                )
+                {
+                        available_variables <-
+                                if (identical(
+                                        climate_menu_acquisition_mode,
+                                        "narclim_remote"
+                                )) {
+                                        climate_menu_request$variables[[1]]
+                                } else {
+                                        extract_available_variable_names(
+                                                nc_hist_files
+                                        )
+                                }
+
+                        resolve_metric_source(
+                                requested_metric = variables[1],
+                                available_variables =
+                                        available_variables,
+                                direct_metric_variables = variables[1],
+                                derivation_requirements =
+                                        metric_derivation_requirements
+                        )
+                }
         ),
         
         tar_target(
                 proj_metric_resolution,
-                resolve_metric_source(
-                        requested_metric = variables[1],
-                        available_variables =
-                                extract_available_variable_names(
-                                        nc_proj_files
-                                ),
-                        direct_metric_variables = variables[1],
-                        derivation_requirements =
-                                metric_derivation_requirements
-                )
+                {
+                        available_variables <-
+                                if (identical(
+                                        climate_menu_acquisition_mode,
+                                        "narclim_remote"
+                                )) {
+                                        climate_menu_request$variables[[1]]
+                                } else {
+                                        extract_available_variable_names(
+                                                nc_proj_files
+                                        )
+                                }
+
+                        resolve_metric_source(
+                                requested_metric = variables[1],
+                                available_variables =
+                                        available_variables,
+                                direct_metric_variables = variables[1],
+                                derivation_requirements =
+                                        metric_derivation_requirements
+                        )
+                }
         ),
         
         tar_target(
@@ -423,21 +616,109 @@ list(
         
         tar_target(t_raster_hist_file, {
                 if (!"total" %in% selected_targets) return(NULL)
-                r <- load_and_crop_rasters(nc_hist_files, variables[1], hist_start_year, hist_end_year,
-                                           test_mode, if ("shapes" %in% selected_targets) city_shape else NULL,
-                                           if (isTRUE(test_mode)) sample_layers else NULL)
+
+                if (identical(climate_menu_acquisition_mode, "narclim_remote")) {
+
+                        path <- file.path(
+                                output_dir,
+                                paste0(
+                                        "hist_remote_",
+                                        hist_start_year, "_", hist_end_year,
+                                        "_", safe_name(variables[1]),
+                                        ".tif"
+                                )
+                        )
+
+                        return(
+                                stream_narclim_period_daily_file(
+                                        opendap_url = narclim_remote_hist_resources$opendap_url[[1]],
+                                        variable = climate_menu_request$variables[[1]],
+                                        indices = narclim_remote_indices,
+                                        remote_info = narclim_remote_hist_info,
+                                        start_year = hist_start_year,
+                                        end_year = hist_end_year,
+                                        output_file = path,
+                                        chunk_days = 31L
+                                )
+                        )
+                }
+
+                # Existing local-file acquisition path retained unchanged.
+                r <- load_and_crop_rasters(
+                        nc_hist_files,
+                        variables[1],
+                        hist_start_year,
+                        hist_end_year,
+                        test_mode,
+                        if ("shapes" %in% selected_targets) city_shape else NULL,
+                        if (isTRUE(test_mode)) sample_layers else NULL
+                )
+
                 if (is.null(r)) return(NULL)
-                path <- file.path(output_dir, paste0("hist_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".tif"))
+
+                path <- file.path(
+                        output_dir,
+                        paste0(
+                                "hist_",
+                                format(Sys.time(), "%Y%m%d_%H%M%S"),
+                                ".tif"
+                        )
+                )
+
                 safe_write_raster(r, path)
         }, format = "file"),
         
         tar_target(t_raster_proj_file, {
                 if (!"total" %in% selected_targets) return(NULL)
-                r <- load_and_crop_rasters(nc_proj_files, variables[1], proj_start_year, proj_end_year,
-                                           test_mode, if ("shapes" %in% selected_targets) city_shape else NULL,
-                                           if (isTRUE(test_mode)) sample_layers else NULL)
+
+                if (identical(climate_menu_acquisition_mode, "narclim_remote")) {
+
+                        path <- file.path(
+                                output_dir,
+                                paste0(
+                                        "proj_remote_",
+                                        proj_start_year, "_", proj_end_year,
+                                        "_", safe_name(variables[1]),
+                                        ".tif"
+                                )
+                        )
+
+                        return(
+                                stream_narclim_period_daily_file(
+                                        opendap_url = narclim_remote_proj_resources$opendap_url[[1]],
+                                        variable = climate_menu_request$variables[[1]],
+                                        indices = narclim_remote_indices,
+                                        remote_info = narclim_remote_proj_info,
+                                        start_year = proj_start_year,
+                                        end_year = proj_end_year,
+                                        output_file = path,
+                                        chunk_days = 31L
+                                )
+                        )
+                }
+
+                # Existing local-file acquisition path retained unchanged.
+                r <- load_and_crop_rasters(
+                        nc_proj_files,
+                        variables[1],
+                        proj_start_year,
+                        proj_end_year,
+                        test_mode,
+                        if ("shapes" %in% selected_targets) city_shape else NULL,
+                        if (isTRUE(test_mode)) sample_layers else NULL
+                )
+
                 if (is.null(r)) return(NULL)
-                path <- file.path(output_dir, paste0("proj_", format(Sys.time(), "%Y%m%d_%H%M%S"), ".tif"))
+
+                path <- file.path(
+                        output_dir,
+                        paste0(
+                                "proj_",
+                                format(Sys.time(), "%Y%m%d_%H%M%S"),
+                                ".tif"
+                        )
+                )
+
                 safe_write_raster(r, path)
         }, format = "file"),
         
